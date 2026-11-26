@@ -1,0 +1,42 @@
+Third-party components in ua-spike
+==================================
+
+ua-spike is Spike, the RISC-V ISA simulator
+(https://github.com/riscv-software-src/riscv-isa-sim), with a patch stack
+added by uarchlabs. Keep this file and the notices it lists in source and
+binary distributions.
+
+------------------------------------------------------------------------
+Spike
+------------------------------------------------------------------------
+Files:    everything not listed under another heading
+Origin:   https://github.com/riscv-software-src/riscv-isa-sim
+License:  BSD-3-Clause, see LICENSE
+          Copyright (c) 2010-2017, The Regents of the University of
+          California (Regents)
+
+Spike bundles components that keep their own licenses, in their own
+directories:
+
+- berkeley-softfloat-3/ (git submodule): Berkeley SoftFloat Release 3,
+  BSD-3-Clause, see berkeley-softfloat-3/COPYING.txt. softfloat/ holds
+  Spike's build glue for it.
+- fdt/: libfdt, GPL-2.0-or-later OR BSD-2-Clause, per the SPDX headers in
+  its files. ua-spike uses it under BSD-2-Clause.
+
+------------------------------------------------------------------------
+uarchlabs additions
+------------------------------------------------------------------------
+Files:    ua/, .github/workflows/ua-*.yml, README_UA.md, this file, and
+          the ua-spike changes to Spike's own files
+License:  BSD-3-Clause, the same as Spike
+          Copyright (c) 2026 Jeff Nye, uarchlabs.com
+
+------------------------------------------------------------------------
+Planned additions (add an entry when the code lands)
+------------------------------------------------------------------------
+- Instruction counters, BBV, ROI, warmup and checkpoint code ported from
+  Condor Computing's Spike-STF fork
+  (https://github.com/condorcomputing/condor.riscv-isa-sim). The ported
+  code is under Spike's BSD-3-Clause license; confirm bb_tracer's license
+  with Condor before it lands.

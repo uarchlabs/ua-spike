@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2026 Jeff Nye, uarchlabs.com
+#
+# ua-spike CI (task B9). Upstream's own workflows only run on master, so
+# they do not run here.
+#   upstream-suite: upstream's ci-tests regression on our main.
+#   commit-logs:    every riscv-tests RV64 ISA test on ua-spike and on stock
+#                   upstream at our base commit; exit codes and commit logs
+#                   must be identical.
+
+name: ua-spike CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-suite:
+    name: Upstream regression (ci-tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo xargs apt-get install -y < .github/workflows/apt-packages.txt
+
+      - name: Build and test
+        run: |
+          ci-tests/build-spike
+          ci-tests/test-spike
+
+  commit-logs:
+    name: Commit logs match upstream
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo xargs apt-get install -y < .github/workflows/apt-packages.txt
+
+      - name: Find the upstream base
+        id: base
+        run: |
+          base=$(git merge-base HEAD origin/vendor/upstream)
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+          # Changes outside our own CI and docs mean the engine differs from upstream.
+          if git diff --quiet "$base" HEAD -- . ':(exclude)ua' ':(exclude).github' \
+               ':(exclude)README_UA.md' ':(exclude)THIRD_PARTY_LICENSES'; then
+            echo "engine=same" >> "$GITHUB_OUTPUT"
+            echo "No engine changes since upstream ${base:0:7}: one build serves both sides."
+          else
+            echo "engine=changed" >> "$GITHUB_OUTPUT"
+            echo "Engine differs from upstream ${base:0:7}: building both."
+          fi
+
+      - name: Build ua-spike
+        run: ua/ci/build-spike.sh . "$RUNNER_TEMP/build-ours" "$RUNNER_TEMP/ours"
+
+      - name: Build upstream at the base
+        if: steps.base.outputs.engine == 'changed'
+        run: |
+          git worktree add "$RUNNER_TEMP/upstream-src" "${{ steps.base.outputs.sha }}"
+          git -C "$RUNNER_TEMP/upstream-src" submodule update --init --recursive
+          ua/ci/build-spike.sh "$RUNNER_TEMP/upstream-src" "$RUNNER_TEMP/build-base" "$RUNNER_TEMP/base"
+
+      - name: Build riscv-tests
+        run: ua/ci/build-riscv-tests.sh "$RUNNER_TEMP/rt"
+
+      - name: Compare commit logs
+        run: |
+          base_bin="$RUNNER_TEMP/base/bin/spike"
+          [ "${{ steps.base.outputs.engine }}" = same ] && base_bin="$RUNNER_TEMP/ours/bin/spike"
+          ua/ci/commitlog-diff.sh "$RUNNER_TEMP/ours/bin/spike" "$base_bin" \
+            "$RUNNER_TEMP/rt/isa" "$RUNNER_TEMP/logs"
+
+      - name: Keep differing logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commit-log-differences
+          path: ${{ runner.temp }}/logs
+          if-no-files-found: ignore
