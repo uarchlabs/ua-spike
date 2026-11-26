@@ -12,9 +12,49 @@ only what ua-spike adds. The binary is still called `spike`.
 | Branch | Contents |
 | --- | --- |
 | `main` | Upstream plus our patch stack. Rebased onto `vendor/upstream` about monthly, so it is force-pushed |
-| `vendor/upstream` | Exact copy of upstream `master`, fast-forwarded nightly by `ua-sync-upstream.yml` |
+| `vendor/upstream` | Exact copy of upstream `master`, updated by hand at the start of each rebase |
 | `vendor/condor-devel` | Frozen copy of Condor Computing's `patch-stack/spike-stf-devel`, the reference for the ported features |
-| `patch-stack/ua-spike-<date>-upstream-<sha>` | The state of `main` at each rebase, kept so every past base stays reproducible |
+| `patch-stack/ua-spike-<date>-upstream-<sha>` | The state of `main` after each rebase, kept so every past base stays reproducible |
+
+`vendor/*` and `patch-stack/*` are protected by a ruleset; repository admins
+can update them.
+
+## Monthly rebase
+
+```sh
+# 1. Bring vendor/upstream up to upstream master (fast-forward only)
+git fetch upstream
+git push origin upstream/master:refs/heads/vendor/upstream
+
+# 2. Rebase main onto it
+git fetch origin
+git checkout main
+git rebase origin/vendor/upstream        # resolve conflicts, build, test
+git push --force-with-lease origin main  # wait for ua-spike CI to pass
+
+# 3. Keep a snapshot of this rebase
+base=$(git rev-parse --short origin/vendor/upstream)
+git push origin main:refs/heads/patch-stack/ua-spike-$(date +%F)-upstream-$base
+
+# 4. Note the riscv-opcodes commit Spike's decoder was generated from
+grep -o 'riscv-opcodes ([0-9a-f]*)' riscv/encoding.h
+```
+
+Then, in uarchlabs/aspenapi, move the riscv-opcodes pin to that commit:
+
+```sh
+git -C ext/riscv-opcodes fetch
+git -C ext/riscv-opcodes checkout <short sha from step 4>
+git -C ext/riscv-opcodes rev-parse HEAD   # full sha
+# set riscv_opcodes_commit in isa/profiles/rva23s64.yaml to that full sha
+PYTHONPATH=python python3 -m aspen_isa ids --assign
+PYTHONPATH=python python3 -m aspen_isa validate
+git add ext/riscv-opcodes isa
+git commit -m "Move riscv-opcodes pin to <short sha> (ua-spike rebase)"
+```
+
+If upstream's `encoding.h` still names the same riscv-opcodes commit, step 4
+needs no aspenapi change.
 
 ## What the stack adds
 
